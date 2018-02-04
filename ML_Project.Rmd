@@ -1,0 +1,115 @@
+---
+title: "Practical Machine Learning Project"
+author: "Jeho Kang"
+date: "February 4, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Introduction
+### Backgroud
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+### Data
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+### Project Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+
+## Loading and cleaning data
+```{r}
+pml_train = read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+pml_test = read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+
+```
+
+Remove the columns having at least 90% of NA or blank values on the training and test datasets  
+```{r}
+colToRemove = which(colSums(is.na(pml_train) | pml_train=="") > 0.9*dim(pml_train)[1])
+pml_train = pml_train[,-colToRemove]
+
+colToRemove = which(colSums(is.na(pml_test) | pml_test=="") > 0.9*dim(pml_test)[1])
+pml_test = pml_test[,-colToRemove]
+```
+
+Remove the first five variables that don't make intuitive sense for prediction (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp)  
+```{r}
+pml_train = pml_train[,-(1:5)]
+pml_test = pml_test[,-(1:5)]
+```
+
+## Model Building
+```{r}
+library(caret)
+library(rattle)
+
+set.seed(1234)
+inTrain = createDataPartition(y=pml_train$classe, p=0.7,list=F)
+trainset = pml_train[inTrain,]
+testset = pml_train[-inTrain,]
+```
+
+### 1) Decision Tree Model
+```{r}
+set.seed(1234)
+modFitDecTree = train(classe ~ ., data=trainset, method="rpart")
+fancyRpartPlot(modFitDecTree$finalModel)
+
+predDecTree = predict(modFitDecTree, newdata=testset)
+confMDecTree = confusionMatrix(testset$classe,predDecTree)
+confMDecTree
+
+plot(confMDecTree$table, col = confMDecTree$byClass,
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMDecTree$overall['Accuracy'],4)))
+```
+
+### 2) Random Forests Model
+```{r}
+set.seed(1234)
+modFitRF = train(classe ~ ., data=trainset, method="rf",
+                 trControl = trainControl(method="cv", number=3),
+                 verbose=F)
+plot(modFitRF, main="Accuracy of Random forest model by number of predictors")
+names(modFitRF$finalModel)
+plot(modFitRF$finalModel,main="Model error of Random forest model by number of trees")
+
+predRF = predict(modFitRF, newdata=testset)
+confMRF = confusionMatrix(testset$classe,predRF)
+confMRF
+
+plot(confMRF$table, col = confMRF$byClass,
+     main = paste("Random Forest - Accuracy =",
+                  round(confMRF$overall['Accuracy'],4)))
+```
+
+### 3) Generalized Boosting Model (GBM)
+```{r}
+set.seed(1234)
+modFitGBM = train(classe ~ ., data=trainset, method="gbm",
+                   trControl = trainControl(method = "repeatedcv",
+                                            number = 5, repeats = 1),
+                   verbose=F)
+plot(modFitGBM)
+
+predGBM = predict(modFitGBM, newdata=testset)
+confMGBM = confusionMatrix(testset$classe,predGBM)
+confMGBM
+
+plot(confMGBM$table, col = confMGBM$byClass,
+     main = paste("Generalized Boosting (GBM) - Accuracy =",
+                  round(confMGBM$overall['Accuracy'],4)))
+```
+
+## Conclusion
+The Random Forests model is showing best accuracy and this model will be used for predicting the classe values for the test set.
+```{r}
+final_pred = predict(modFitRF, newdata=pml_test)
+final_pred
+```
